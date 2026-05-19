@@ -1,0 +1,10 @@
+# Configuração para Localweb rodar Node.js via Passenger
+Passive On
+PassengerAppRoot /home/storage/1/81/fe/vianectare/public_html/app/sgq/api
+PassengerAppType node
+PassengerStartupFile app.js
+
+RewriteEngine On
+RewriteRule ^$ http://127.0.0.1:3001/ [P,L]
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^(.*)$ http://127.0.0.1:3001/$1 [P,L]

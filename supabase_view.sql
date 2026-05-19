@@ -1,0 +1,95 @@
+-- SCRIPT PARA REPARAR O BANCO DE DADOS SUPABASE
+-- Este script garante que todas as tabelas especializadas existam e cria a view agregada.
+
+DO $$
+DECLARE
+    form_types TEXT[] := ARRAY[
+        'fruit_discharge', 'fruit_intake', 'pineapple_pulp', 'blender_release', 
+        'blender_control', 'reprocess_monitoring', 'organic_application', 
+        'pesticide_application', 'truck_checklist', 'field_mapping', 
+        'material_movement', 'reception_analysis', 'reception_checklist', 
+        'fruit_truck_intake', 'gate_registration', 'order_movement', 
+        'container_checklist', 'truck_inspection', 'packing_list', 
+        'shipping_order', 'shipping_checklist', 'production_monitoring', 
+        'pulping_operation', 'aseptic_batch_control', 'sterilizer_conditions', 
+        'aseptic_bag_batch', 'physical_chemical_analysis', 'microbiological_analysis', 
+        'batch_generation', 'equipment_cleaning', 'air_curtain_inspection', 
+        'lab_cleaning', 'ozone_monitoring', 'peracetic_acid_monitoring', 
+        'scale_verification', 'ph_meter_verification', 'refractometer_verification', 
+        'fridge_temperature_verification', 'boiler_water_ph_registration', 
+        'label_delivery', 'water_analysis', 'water_treatment', 'certificate_of_analysis'
+    ];
+    ft TEXT;
+BEGIN
+    FOREACH ft IN ARRAY form_types
+    LOOP
+        -- Cria a tabela se ela não existir
+        EXECUTE format('
+            CREATE TABLE IF NOT EXISTS %I (
+                id UUID PRIMARY KEY,
+                user_id TEXT,
+                user_name TEXT,
+                timestamp TIMESTAMPTZ DEFAULT NOW(),
+                data JSONB,
+                sync_status TEXT DEFAULT ''synced''
+            );
+            
+            -- Garante que o RLS está habilitado
+            ALTER TABLE %I ENABLE ROW LEVEL SECURITY;
+            
+            -- Cria política de acesso (ajuste conforme sua segurança)
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_policies WHERE tablename = %L AND policyname = ''Allow All Access''
+            ) THEN
+                EXECUTE format(''CREATE POLICY "Allow All Access" ON %%I FOR ALL USING (true)'', %L);
+            END IF;
+        ', ft, ft, ft, ft, ft);
+    END LOOP;
+END $$;
+
+-- CRIAÇÃO DA VIEW AGREGADA
+-- Esta view permite que o App busque todos os registros de uma vez
+CREATE OR REPLACE VIEW view_all_records AS
+SELECT 'fruit-discharge' as form_type, id, user_id, user_name, timestamp, data, sync_status FROM fruit_discharge
+UNION ALL SELECT 'fruit-intake' as form_type, id, user_id, user_name, timestamp, data, sync_status FROM fruit_intake
+UNION ALL SELECT 'pineapple-pulp' as form_type, id, user_id, user_name, timestamp, data, sync_status FROM pineapple_pulp
+UNION ALL SELECT 'blender-release' as form_type, id, user_id, user_name, timestamp, data, sync_status FROM blender_release
+UNION ALL SELECT 'blender-control' as form_type, id, user_id, user_name, timestamp, data, sync_status FROM blender_control
+UNION ALL SELECT 'reprocess-monitoring' as form_type, id, user_id, user_name, timestamp, data, sync_status FROM reprocess_monitoring
+UNION ALL SELECT 'organic-application' as form_type, id, user_id, user_name, timestamp, data, sync_status FROM organic_application
+UNION ALL SELECT 'pesticide-application' as form_type, id, user_id, user_name, timestamp, data, sync_status FROM pesticide_application
+UNION ALL SELECT 'truck-checklist' as form_type, id, user_id, user_name, timestamp, data, sync_status FROM truck_checklist
+UNION ALL SELECT 'field-mapping' as form_type, id, user_id, user_name, timestamp, data, sync_status FROM field_mapping
+UNION ALL SELECT 'material-movement' as form_type, id, user_id, user_name, timestamp, data, sync_status FROM material_movement
+UNION ALL SELECT 'reception-analysis' as form_type, id, user_id, user_name, timestamp, data, sync_status FROM reception_analysis
+UNION ALL SELECT 'reception-checklist' as form_type, id, user_id, user_name, timestamp, data, sync_status FROM reception_checklist
+UNION ALL SELECT 'fruit-truck-intake' as form_type, id, user_id, user_name, timestamp, data, sync_status FROM fruit_truck_intake
+UNION ALL SELECT 'gate-registration' as form_type, id, user_id, user_name, timestamp, data, sync_status FROM gate_registration
+UNION ALL SELECT 'order-movement' as form_type, id, user_id, user_name, timestamp, data, sync_status FROM order_movement
+UNION ALL SELECT 'container-checklist' as form_type, id, user_id, user_name, timestamp, data, sync_status FROM container_checklist
+UNION ALL SELECT 'truck-inspection' as form_type, id, user_id, user_name, timestamp, data, sync_status FROM truck_inspection
+UNION ALL SELECT 'packing-list' as form_type, id, user_id, user_name, timestamp, data, sync_status FROM packing_list
+UNION ALL SELECT 'shipping-order' as form_type, id, user_id, user_name, timestamp, data, sync_status FROM shipping_order
+UNION ALL SELECT 'shipping-checklist' as form_type, id, user_id, user_name, timestamp, data, sync_status FROM shipping_checklist
+UNION ALL SELECT 'production-monitoring' as form_type, id, user_id, user_name, timestamp, data, sync_status FROM production_monitoring
+UNION ALL SELECT 'pulping-operation' as form_type, id, user_id, user_name, timestamp, data, sync_status FROM pulping_operation
+UNION ALL SELECT 'aseptic-batch-control' as form_type, id, user_id, user_name, timestamp, data, sync_status FROM aseptic_batch_control
+UNION ALL SELECT 'sterilizer-conditions' as form_type, id, user_id, user_name, timestamp, data, sync_status FROM sterilizer_conditions
+UNION ALL SELECT 'aseptic-bag-batch' as form_type, id, user_id, user_name, timestamp, data, sync_status FROM aseptic_bag_batch
+UNION ALL SELECT 'physical-chemical-analysis' as form_type, id, user_id, user_name, timestamp, data, sync_status FROM physical_chemical_analysis
+UNION ALL SELECT 'microbiological-analysis' as form_type, id, user_id, user_name, timestamp, data, sync_status FROM microbiological_analysis
+UNION ALL SELECT 'batch-generation' as form_type, id, user_id, user_name, timestamp, data, sync_status FROM batch_generation
+UNION ALL SELECT 'equipment-cleaning' as form_type, id, user_id, user_name, timestamp, data, sync_status FROM equipment_cleaning
+UNION ALL SELECT 'air-curtain-inspection' as form_type, id, user_id, user_name, timestamp, data, sync_status FROM air_curtain_inspection
+UNION ALL SELECT 'lab-cleaning' as form_type, id, user_id, user_name, timestamp, data, sync_status FROM lab_cleaning
+UNION ALL SELECT 'ozone-monitoring' as form_type, id, user_id, user_name, timestamp, data, sync_status FROM ozone_monitoring
+UNION ALL SELECT 'peracetic-acid-monitoring' as form_type, id, user_id, user_name, timestamp, data, sync_status FROM peracetic_acid_monitoring
+UNION ALL SELECT 'scale-verification' as form_type, id, user_id, user_name, timestamp, data, sync_status FROM scale_verification
+UNION ALL SELECT 'ph-meter-verification' as form_type, id, user_id, user_name, timestamp, data, sync_status FROM ph_meter_verification
+UNION ALL SELECT 'refractometer-verification' as form_type, id, user_id, user_name, timestamp, data, sync_status FROM refractometer_verification
+UNION ALL SELECT 'fridge-temperature-verification' as form_type, id, user_id, user_name, timestamp, data, sync_status FROM fridge_temperature_verification
+UNION ALL SELECT 'boiler-water-ph-registration' as form_type, id, user_id, user_name, timestamp, data, sync_status FROM boiler_water_ph_registration
+UNION ALL SELECT 'label-delivery' as form_type, id, user_id, user_name, timestamp, data, sync_status FROM label_delivery
+UNION ALL SELECT 'water-analysis' as form_type, id, user_id, user_name, timestamp, data, sync_status FROM water_analysis
+UNION ALL SELECT 'water-treatment' as form_type, id, user_id, user_name, timestamp, data, sync_status FROM water_treatment
+UNION ALL SELECT 'certificate-of-analysis' as form_type, id, user_id, user_name, timestamp, data, sync_status FROM certificate_of_analysis;
