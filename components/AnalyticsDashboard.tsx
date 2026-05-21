@@ -17,6 +17,60 @@ type FilterType = 'day' | 'month' | 'year';
 
 const COLORS = ['#E3851B', '#14b8a6', '#8b5cf6', '#ec4899', '#f43f5e', '#f59e0b', '#10b981', '#3b82f6'];
 
+const getTickStep = (max: number) => {
+  if (max <= 0.1) return 0.01;
+  if (max <= 0.2) return 0.02;
+  if (max <= 0.5) return 0.05;
+  if (max <= 2) return 0.2;
+  if (max <= 5) return 0.5;
+  if (max <= 25) return 1;
+  if (max <= 50) return 5;
+  return 10;
+};
+
+const getYAxisConfig = (data: any[], keyOrKeys: string | string[], fallbackMax = 5) => {
+  if (!data || data.length === 0) {
+    const step = getTickStep(fallbackMax);
+    const ticks = [];
+    for (let i = 0; i <= fallbackMax; i += step) {
+      ticks.push(parseFloat(i.toFixed(4)));
+    }
+    return { domain: [0, fallbackMax] as [number, number], ticks };
+  }
+
+  const keys = Array.isArray(keyOrKeys) ? keyOrKeys : [keyOrKeys];
+  let max = 0;
+  let min = 0;
+  data.forEach(d => {
+    keys.forEach(k => {
+      const val = parseFloat(d[k]);
+      if (!isNaN(val)) {
+        if (val > max) max = val;
+        if (val < min) min = val;
+      }
+    });
+  });
+
+  if (max === 0 && min === 0) {
+    max = fallbackMax;
+  }
+
+  const start = min < 0 ? Math.floor(min / 10) * 10 : 0;
+  const rangeMax = max - start;
+  const step = getTickStep(rangeMax);
+  const ceiling = start + Math.ceil(rangeMax / step) * step;
+
+  const ticks = [];
+  for (let i = start; i <= ceiling + (step / 2); i += step) {
+    ticks.push(parseFloat(i.toFixed(4)));
+  }
+
+  return {
+    domain: [start, parseFloat(ceiling.toFixed(4))] as [number, number],
+    ticks
+  };
+};
+
 const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack, currentUser }) => {
   const [filterType, setFilterType] = useState<FilterType>('month');
   const [selectedFruit, setSelectedFruit] = useState<string>('TODOS');
@@ -428,7 +482,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack, current
                                 <LineChart data={brixFrutaFrescaData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
                                     <XAxis dataKey="time" tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={(val) => val.split(' ')[1] || val} />
-                                    <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} domain={['dataMin - 1', 'dataMax + 1']} />
+                                    <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} {...getYAxisConfig(brixFrutaFrescaData, 'brix', 10)} />
                                     <Tooltip 
                                         contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
                                         labelStyle={{ fontSize: '10px', color: '#6b7280', fontWeight: 'bold' }}
@@ -456,7 +510,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack, current
                                 <LineChart data={residuoMineralData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
                                     <XAxis dataKey="time" hide />
-                                    <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} domain={['dataMin - 0.01', 'dataMax + 0.01']} />
+                                    <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} {...getYAxisConfig(residuoMineralData, 'valor', 0.1)} />
                                     <Tooltip 
                                         contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontSize: '11px' }}
                                         formatter={(value: number) => [`${value.toFixed(4)} g/kg`, 'Resíduo Mineral']}
@@ -483,7 +537,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack, current
                                 <LineChart data={pontosChartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
                                     <XAxis dataKey="time" tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={(val) => val.split(' ')[1] || val} />
-                                    <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} domain={['dataMin - 2', 'dataMax + 2']} />
+                                    <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} {...getYAxisConfig(pontosChartData, ['pontosMarrons', 'pontosPretos'], 10)} />
                                     <Tooltip 
                                         contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontSize: '11px' }}
                                         formatter={(value: number, name: string) => [`${value.toFixed(1)}`, name === 'pontosPretos' ? 'Pontos Pretos' : 'Pontos Marrons']}
@@ -511,7 +565,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack, current
                                 <LineChart data={brixIntegralData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
                                     <XAxis dataKey="time" tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={(val) => val.split(' ')[1] || val} />
-                                    <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} domain={['dataMin - 1', 'dataMax + 1']} />
+                                    <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} {...getYAxisConfig(brixIntegralData, 'brix', 10)} />
                                     <Tooltip 
                                         contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
                                         labelStyle={{ fontSize: '10px', color: '#6b7280', fontWeight: 'bold' }}
@@ -539,7 +593,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack, current
                                 <LineChart data={brixConcentradoData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
                                     <XAxis dataKey="time" tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={(val) => val.split(' ')[1] || val} />
-                                    <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} domain={['dataMin - 1', 'dataMax + 1']} />
+                                    <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} {...getYAxisConfig(brixConcentradoData, 'brix', 10)} />
                                     <Tooltip 
                                         contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
                                         labelStyle={{ fontSize: '10px', color: '#6b7280', fontWeight: 'bold' }}
@@ -598,7 +652,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack, current
                                 <LineChart data={analysisComparisonData} margin={{ top: 5, right: 10, bottom: 20, left: -20 }}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
                                     <XAxis dataKey="time" hide />
-                                    <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} domain={['dataMin - 0.5', 'dataMax + 0.5']} />
+                                    <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} {...getYAxisConfig(analysisComparisonData, 'ph', 5)} />
                                     <Tooltip 
                                         contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontSize: '11px' }}
                                     />
@@ -624,7 +678,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack, current
                                 <LineChart data={analysisComparisonData} margin={{ top: 5, right: 10, bottom: 20, left: -20 }}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
                                     <XAxis dataKey="time" hide />
-                                    <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} domain={['dataMin - 0.1', 'dataMax + 0.1']} />
+                                    <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} {...getYAxisConfig(analysisComparisonData, 'acidez', 1)} />
                                     <Tooltip 
                                         contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontSize: '11px' }}
                                     />
@@ -650,7 +704,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack, current
                                 <LineChart data={analysisComparisonData} margin={{ top: 5, right: 10, bottom: 20, left: -20 }}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
                                     <XAxis dataKey="time" hide />
-                                    <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} domain={['auto', 'auto']} />
+                                    <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} {...getYAxisConfig(analysisComparisonData, ['corL', 'corA', 'corB'], 50)} />
                                     <Tooltip 
                                         contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontSize: '11px' }}
                                     />
