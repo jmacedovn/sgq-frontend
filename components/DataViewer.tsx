@@ -7,6 +7,16 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../lib/db';
 import { syncService } from '../lib/sync';
 import { isAdminRole } from '../lib/roles';
+import {
+  CartesianGrid,
+  Legend,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis
+} from 'recharts';
 
 interface DataViewerProps {
   onBack: () => void;
@@ -23,6 +33,99 @@ const buildBatchTraceUrl = (code: string) => {
   return url.toString();
 };
 
+type QualityIndicator = 'brixIntegral' | 'brixConcentrado';
+
+const QUALITY_LIMITS: Record<string, Partial<Record<QualityIndicator, { min?: number; max?: number }>>> = {
+  ABACAXI: {
+    brixIntegral: { min: 11 },
+    brixConcentrado: { min: 60.2, max: 60.7 }
+  },
+  AMORA: {
+    brixIntegral: { min: 7.5 }
+  },
+  CANA: {
+    brixIntegral: { min: 18 },
+    brixConcentrado: { min: 65, max: 69 }
+  },
+  TRICARB: {
+    brixConcentrado: { min: 76, max: 81 }
+  },
+  GOIABA: {
+    brixIntegral: { min: 8 },
+    brixConcentrado: { min: 14, max: 16 }
+  },
+  MANGA: {
+    brixIntegral: { min: 14 },
+    brixConcentrado: { min: 28, max: 30 }
+  },
+  MARACUJA: {
+    brixIntegral: { min: 12 }
+  },
+  MARACUJÁ: {
+    brixIntegral: { min: 12 }
+  },
+  MELANCIA: {
+    brixIntegral: { min: 8 },
+    brixConcentrado: { min: 35, max: 40 }
+  }
+};
+
+const COMPILATION_PARAMETERS = [
+  '°Brix Corrigido',
+  'pH',
+  'Acidez (%)',
+  'Cor (L)',
+  'Cor (a)',
+  'Cor (b)',
+  'Pontos Marrons',
+  'Pontos Pretos',
+  'Resíduos Minerais - Areia (g/kg)'
+];
+
+const normalizeText = (value: string = '') =>
+  value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().trim();
+
+const parseNumber = (value: any) => {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number(String(value).replace(',', '.'));
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const parseLotList = (value: string) =>
+  value
+    .split(/[\s,;]+/)
+    .map(lot => lot.trim())
+    .filter(Boolean);
+
+const getRecordDate = (record: any) => {
+  const data = record.data || {};
+  return data.header?.data || data.data || new Date(record.timestamp).toISOString().split('T')[0];
+};
+
+const getQualityLimit = (fruit: string, product: string) => {
+  const normalizedFruit = normalizeText(fruit);
+  const matchKey = Object.keys(QUALITY_LIMITS).find(key => normalizedFruit.includes(normalizeText(key)));
+  const indicator: QualityIndicator = normalizeText(product).includes('CONCENTRADO') ? 'brixConcentrado' : 'brixIntegral';
+  return matchKey ? QUALITY_LIMITS[matchKey][indicator] : undefined;
+};
+
+const getYAxisConfig = (data: any[], keys: string[], fallbackMax = 10) => {
+  const values = data.flatMap(item =>
+    keys.map(key => Number(item[key])).filter(value => Number.isFinite(value))
+  );
+
+  if (values.length === 0) {
+    return { domain: [0, fallbackMax] as [number, number] };
+  }
+
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const padding = Math.max((max - min) * 0.15, 1);
+  return {
+    domain: [Math.floor(min - padding), Math.ceil(max + padding)] as [number, number]
+  };
+};
+
 const DataViewer: React.FC<DataViewerProps> = ({ onBack, onEdit, onExport, currentUser, batchLookupCode, onBatchLookupHandled }) => {
   const [records, setRecords] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -31,6 +134,14 @@ const DataViewer: React.FC<DataViewerProps> = ({ onBack, onEdit, onExport, curre
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [compileLotsInput, setCompileLotsInput] = useState('');
+  const [compileDate, setCompileDate] = useState('');
+  const [compileParameter, setCompileParameter] = useState('°Brix Corrigido');
+  const [compileRequest, setCompileRequest] = useState({
+    lotsInput: '',
+    date: '',
+    parameter: '°Brix Corrigido'
+  });
   
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 15;
@@ -79,6 +190,12 @@ const DataViewer: React.FC<DataViewerProps> = ({ onBack, onEdit, onExport, curre
       }
     },
     [filterType],
+    []
+  );
+
+  const physChemRecords = useLiveQuery(
+    () => db.records.where('form_type').equals(FormType.PHYSICAL_CHEMICAL_ANALYSIS).reverse().sortBy('timestamp'),
+    [],
     []
   );
 
@@ -141,6 +258,60 @@ const DataViewer: React.FC<DataViewerProps> = ({ onBack, onEdit, onExport, curre
       today: filteredRecords.filter(r => new Date(r.timestamp).toISOString().split('T')[0] === today).length
     };
   }, [filteredRecords]);
+
+  const compilationChartData = useMemo(() => {
+    const requestedLots = parseLotList(compileRequest.lotsInput);
+    if (!physChemRecords || requestedLots.length === 0) return [];
+
+    const requestedLotKeys = requestedLots.map(lot => normalizeText(lot));
+    const points = physChemRecords
+      .filter(record => {
+        const header = record.data?.header || {};
+        const lote = normalizeText(header.lote || '');
+        const recordDate = getRecordDate(record);
+        const matchesLot = requestedLotKeys.some(lot => lote === lot || lote.includes(lot) || lot.includes(lote));
+        const matchesDate = !compileRequest.date || recordDate === compileRequest.date;
+        return matchesLot && matchesDate && record.data?.status !== 'pending';
+      })
+      .map(record => {
+        const header = record.data?.header || {};
+        const row = record.data?.rows?.find((item: any) => item.parameter === compileRequest.parameter);
+        const value = parseNumber(row?.average);
+        if (value === null) return null;
+
+        const limit = compileRequest.parameter === '°Brix Corrigido'
+          ? getQualityLimit(header.fruta || '', header.produto || '')
+          : undefined;
+
+        return {
+          lote: header.lote || '---',
+          data: getRecordDate(record),
+          fruta: header.fruta || '---',
+          produto: header.produto || '---',
+          valor: value,
+          minLimit: limit?.min ?? null,
+          maxLimit: limit?.max ?? null,
+          timestamp: new Date(record.timestamp).getTime()
+        };
+      })
+      .filter(Boolean) as any[];
+
+    const average = points.length > 0
+      ? points.reduce((sum, item) => sum + item.valor, 0) / points.length
+      : null;
+
+    return points
+      .sort((a, b) => a.timestamp - b.timestamp)
+      .map(item => ({ ...item, graphAvg: average }));
+  }, [physChemRecords, compileRequest]);
+
+  const compileLots = () => {
+    setCompileRequest({
+      lotsInput: compileLotsInput,
+      date: compileDate,
+      parameter: compileParameter
+    });
+  };
 
   const getFormInfo = (type: string) => {
     return FORMS_CONFIG.find(f => f.type === type) || { title: type, color: 'bg-gray-50 dark:bg-gray-900/500', icon: 'fa-file', code: '---' };
@@ -1261,6 +1432,95 @@ const DataViewer: React.FC<DataViewerProps> = ({ onBack, onEdit, onExport, curre
           >
             <i className="fas fa-sync-alt"></i> Atualizar
           </button>
+      </div>
+
+      <div className="bg-white dark:bg-gray-800 p-4 md:p-6 rounded-2xl md:rounded-[2rem] shadow-xl border border-gray-100 dark:border-gray-700 no-print">
+        <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-4 mb-5">
+          <div>
+            <h3 className="text-sm md:text-base font-black text-[#1A2B34] dark:text-white uppercase tracking-widest flex items-center gap-2">
+              <i className="fas fa-chart-line text-[#E3851B]"></i>
+              Compilação de Lotes
+            </h3>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">
+              Digite os lotes, escolha o dia e gere o gráfico com mínimo, máximo e média
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-[1.4fr_0.8fr_0.9fr_auto] gap-3 w-full xl:max-w-5xl">
+            <textarea
+              value={compileLotsInput}
+              onChange={e => setCompileLotsInput(e.target.value)}
+              rows={2}
+              placeholder="Lotes separados por espaço, vírgula ou quebra de linha"
+              className="w-full px-3 py-2.5 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-600 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-[#E3851B] resize-none"
+            />
+            <input
+              type="date"
+              value={compileDate}
+              onChange={e => setCompileDate(e.target.value)}
+              className="w-full px-3 py-2.5 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-600 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-[#E3851B]"
+            />
+            <select
+              value={compileParameter}
+              onChange={e => setCompileParameter(e.target.value)}
+              className="w-full px-3 py-2.5 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-600 rounded-xl text-xs font-black text-gray-600 dark:text-gray-300 outline-none focus:ring-2 focus:ring-[#E3851B]"
+            >
+              {COMPILATION_PARAMETERS.map(parameter => (
+                <option key={parameter} value={parameter}>{parameter}</option>
+              ))}
+            </select>
+            <button
+              onClick={compileLots}
+              className="px-6 py-2.5 bg-[#1A2B34] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-black transition-colors"
+            >
+              Compilar
+            </button>
+          </div>
+        </div>
+
+        <div className="h-[360px] w-full">
+          {compilationChartData.length > 0 ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={compilationChartData} margin={{ top: 10, right: 24, bottom: 70, left: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                <XAxis
+                  dataKey="lote"
+                  interval={0}
+                  angle={-90}
+                  textAnchor="end"
+                  height={90}
+                  tick={{ fontSize: 8, fill: '#6b7280', fontWeight: 700 }}
+                />
+                <YAxis
+                  tick={{ fontSize: 10, fill: '#6b7280', fontWeight: 700 }}
+                  {...getYAxisConfig(compilationChartData, ['valor', 'minLimit', 'maxLimit', 'graphAvg'], 10)}
+                />
+                <Tooltip
+                  contentStyle={{ borderRadius: '0.75rem', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontSize: '11px' }}
+                  formatter={(value: number, name: string) => {
+                    const labels: Record<string, string> = {
+                      valor: compileRequest.parameter,
+                      minLimit: 'Mínimo',
+                      maxLimit: 'Máximo',
+                      graphAvg: 'Média Gráfica'
+                    };
+                    return [Number(value).toFixed(2).replace('.', ','), labels[name] || name];
+                  }}
+                  labelFormatter={(label) => `Lote: ${label}`}
+                />
+                <Legend iconType="plainline" wrapperStyle={{ fontSize: '10px', fontWeight: 800, paddingTop: 8 }} />
+                <Line type="monotone" dataKey="valor" name={compileRequest.parameter} stroke="#111827" strokeWidth={2.5} dot={{ r: 3, fill: '#111827', stroke: '#fff', strokeWidth: 1 }} activeDot={{ r: 6 }} />
+                <Line type="stepAfter" dataKey="minLimit" name="Mínimo" stroke="#2563eb" strokeWidth={2} dot={false} connectNulls />
+                <Line type="stepAfter" dataKey="maxLimit" name="Máximo" stroke="#ea580c" strokeWidth={2} dot={false} connectNulls />
+                <Line type="monotone" dataKey="graphAvg" name="Média Gráfica" stroke="#dc2626" strokeWidth={2} dot={false} connectNulls />
+              </LineChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-full flex items-center justify-center text-center text-gray-400 text-[10px] uppercase font-black tracking-widest border border-dashed border-gray-200 dark:border-gray-700 rounded-2xl p-8">
+              Informe os lotes e clique em compilar para gerar o gráfico
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="bg-white dark:bg-gray-800 rounded-2xl md:rounded-[2.5rem] shadow-xl border border-gray-100 dark:border-gray-700 overflow-hidden no-print">

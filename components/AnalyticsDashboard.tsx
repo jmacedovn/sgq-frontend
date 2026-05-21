@@ -17,6 +17,76 @@ type FilterType = 'day' | 'month' | 'year';
 
 const COLORS = ['#E3851B', '#14b8a6', '#8b5cf6', '#ec4899', '#f43f5e', '#f59e0b', '#10b981', '#3b82f6'];
 
+type QualityIndicator = 'brixIntegral' | 'brixConcentrado';
+
+type QualityLimit = {
+  min?: number;
+  max?: number;
+};
+
+const QUALITY_LIMITS: Record<string, Partial<Record<QualityIndicator, QualityLimit>>> = {
+  ABACAXI: {
+    brixIntegral: { min: 11 },
+    brixConcentrado: { min: 60.2, max: 60.7 }
+  },
+  AMORA: {
+    brixIntegral: { min: 7.5 }
+  },
+  CANA: {
+    brixIntegral: { min: 18 },
+    brixConcentrado: { min: 65, max: 69 }
+  },
+  TRICARB: {
+    brixConcentrado: { min: 76, max: 81 }
+  },
+  GOIABA: {
+    brixIntegral: { min: 8 },
+    brixConcentrado: { min: 14, max: 16 }
+  },
+  MANGA: {
+    brixIntegral: { min: 14 },
+    brixConcentrado: { min: 28, max: 30 }
+  },
+  MARACUJA: {
+    brixIntegral: { min: 12 }
+  },
+  MARACUJÁ: {
+    brixIntegral: { min: 12 }
+  },
+  MELANCIA: {
+    brixIntegral: { min: 8 },
+    brixConcentrado: { min: 35, max: 40 }
+  }
+};
+
+const normalizeText = (value: string = '') =>
+  value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().trim();
+
+const findQualityLimit = (fruit: string, indicator: QualityIndicator): QualityLimit | undefined => {
+  const normalizedFruit = normalizeText(fruit);
+  const matchKey = Object.keys(QUALITY_LIMITS).find(key => normalizedFruit.includes(normalizeText(key)));
+  return matchKey ? QUALITY_LIMITS[matchKey][indicator] : undefined;
+};
+
+const withQualityLines = (data: any[], indicator: QualityIndicator, valueKey = 'brix') => {
+  const validValues = data
+    .map(item => Number(item[valueKey]))
+    .filter(value => !isNaN(value));
+  const graphAvg = validValues.length > 0
+    ? validValues.reduce((sum, value) => sum + value, 0) / validValues.length
+    : null;
+
+  return data.map(item => {
+    const limits = findQualityLimit(item.fruta || item.produto || '', indicator);
+    return {
+      ...item,
+      minLimit: limits?.min ?? null,
+      maxLimit: limits?.max ?? null,
+      graphAvg
+    };
+  });
+};
+
 const getTickStep = (max: number) => {
   if (max <= 0.1) return 0.01;
   if (max <= 0.2) return 0.02;
@@ -118,9 +188,10 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack, current
 
   const matchesFruit = (record: any, target: string): boolean => {
     if (target === 'TODOS') return true;
-    const fruta = getRecordFruit(record);
+    const fruta = normalizeText(getRecordFruit(record));
+    const normalizedTarget = normalizeText(target);
     // Partial match: e.g. "MANGA ROSA" contains "MANGA"
-    return fruta.indexOf(target) !== -1;
+    return fruta.indexOf(normalizedTarget) !== -1;
   };
 
   // Filter records by fruit if not 'TODOS'
@@ -179,14 +250,18 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack, current
     physChem.forEach(r => {
       const brixRow = r.data?.rows?.find((row: any) => row.parameter === '°Brix Corrigido');
       const produto = (r.data?.header?.produto || r.data?.produto || '').toUpperCase();
+      const fruta = getRecordFruit(r);
       
       if (brixRow && brixRow.average) {
         const val = parseFloat(brixRow.average.replace(',', '.'));
         if (!isNaN(val)) {
           dataPoints.push({
             time: new Date(r.timestamp).toLocaleDateString() + ' ' + new Date(r.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
+            timestamp: new Date(r.timestamp).getTime(),
             brix: val,
             lote: r.data?.header?.lote || 'N/A',
+            fruta,
+            produto,
             isIntegral: produto.includes('INTEGRAL'),
             isConcentrado: produto.includes('CONCENTRADO')
           });
@@ -194,11 +269,13 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack, current
       }
     });
 
-    return dataPoints.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+    return dataPoints.sort((a, b) => a.timestamp - b.timestamp);
   }, [safeRecords]);
 
   const brixIntegralData = useMemo(() => brixData.filter(d => d.isIntegral), [brixData]);
   const brixConcentradoData = useMemo(() => brixData.filter(d => d.isConcentrado), [brixData]);
+  const brixIntegralChartData = useMemo(() => withQualityLines(brixIntegralData, 'brixIntegral'), [brixIntegralData]);
+  const brixConcentradoChartData = useMemo(() => withQualityLines(brixConcentradoData, 'brixConcentrado'), [brixConcentradoData]);
 
   // KPI: Brix Fruta Fresca (from fruit-intake)
   const brixFrutaFrescaData = useMemo(() => {
@@ -217,6 +294,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack, current
                 time: new Date(r.timestamp).toLocaleDateString() + ' ' + new Date(r.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
                 timestamp: new Date(r.timestamp).getTime(),
                 brix: val,
+                fruta: getRecordFruit(r),
                 placa: charge.placa || 'N/A'
               });
             }
@@ -227,6 +305,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack, current
 
     return dataPoints.sort((a, b) => a.timestamp - b.timestamp);
   }, [safeRecords]);
+  const brixFrutaFrescaChartData = useMemo(() => withQualityLines(brixFrutaFrescaData, 'brixIntegral'), [brixFrutaFrescaData]);
 
   const avgBrixFrutaFresca = useMemo(() => {
     if (brixFrutaFrescaData.length === 0) return 0;
@@ -379,6 +458,8 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack, current
                 <option value="MANGA">Manga</option>
                 <option value="GOIABA">Goiaba</option>
                 <option value="CANA">Cana</option>
+                <option value="AMORA">Amora</option>
+                <option value="TRICARB">Tricarb</option>
                 <option value="MARACUJÁ">Maracujá</option>
                 <option value="MELANCIA">Melancia</option>
                 <option value="ABACAXI">Abacaxi</option>
@@ -479,16 +560,28 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack, current
                     <div className="h-[300px] w-full">
                         {brixFrutaFrescaData.length > 0 ? (
                             <ResponsiveContainer width="100%" height="100%">
-                                <LineChart data={brixFrutaFrescaData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+                                <LineChart data={brixFrutaFrescaChartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
                                     <XAxis dataKey="time" tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={(val) => val.split(' ')[1] || val} />
-                                    <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} {...getYAxisConfig(brixFrutaFrescaData, 'brix', 10)} />
+                                    <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} {...getYAxisConfig(brixFrutaFrescaChartData, ['brix', 'minLimit', 'maxLimit', 'graphAvg'], 10)} />
                                     <Tooltip 
                                         contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
                                         labelStyle={{ fontSize: '10px', color: '#6b7280', fontWeight: 'bold' }}
-                                        formatter={(value: number) => [`${value.toFixed(2)} °Bx`, 'Brix Fruta Fresca']}
+                                        formatter={(value: number, name: string) => {
+                                            const labels: Record<string, string> = {
+                                                brix: 'Brix Fruta Fresca',
+                                                minLimit: 'Mínimo',
+                                                maxLimit: 'Máximo',
+                                                graphAvg: 'Média Gráfica'
+                                            };
+                                            return [`${Number(value).toFixed(2)} °Bx`, labels[name] || name];
+                                        }}
                                     />
-                                    <Line type="monotone" dataKey="brix" stroke="#E3851B" strokeWidth={3} dot={{ r: 4, fill: '#E3851B', strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 6 }} />
+                                    <Legend iconType="plainline" wrapperStyle={{ fontSize: '10px', fontWeight: 'bold' }} />
+                                    <Line type="monotone" dataKey="brix" name="Brix Fruta Fresca" stroke="#111827" strokeWidth={2.5} dot={{ r: 3, fill: '#111827', strokeWidth: 1, stroke: '#fff' }} activeDot={{ r: 6 }} />
+                                    <Line type="stepAfter" dataKey="minLimit" name="Mínimo" stroke="#2563eb" strokeWidth={2} dot={false} connectNulls />
+                                    <Line type="stepAfter" dataKey="maxLimit" name="Máximo" stroke="#ea580c" strokeWidth={2} dot={false} connectNulls />
+                                    <Line type="monotone" dataKey="graphAvg" name="Média Gráfica" stroke="#dc2626" strokeWidth={2} dot={false} connectNulls />
                                 </LineChart>
                             </ResponsiveContainer>
                         ) : (
@@ -562,16 +655,28 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack, current
                     <div className="h-[300px] w-full">
                         {brixIntegralData.length > 0 ? (
                             <ResponsiveContainer width="100%" height="100%">
-                                <LineChart data={brixIntegralData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+                                <LineChart data={brixIntegralChartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
                                     <XAxis dataKey="time" tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={(val) => val.split(' ')[1] || val} />
-                                    <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} {...getYAxisConfig(brixIntegralData, 'brix', 10)} />
+                                    <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} {...getYAxisConfig(brixIntegralChartData, ['brix', 'minLimit', 'maxLimit', 'graphAvg'], 10)} />
                                     <Tooltip 
                                         contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
                                         labelStyle={{ fontSize: '10px', color: '#6b7280', fontWeight: 'bold' }}
-                                        formatter={(value: number) => [`${value.toFixed(2)} °Bx`, 'Brix Integral']}
+                                        formatter={(value: number, name: string) => {
+                                            const labels: Record<string, string> = {
+                                                brix: 'Brix Integral',
+                                                minLimit: 'Mínimo',
+                                                maxLimit: 'Máximo',
+                                                graphAvg: 'Média Gráfica'
+                                            };
+                                            return [`${Number(value).toFixed(2)} °Bx`, labels[name] || name];
+                                        }}
                                     />
-                                    <Line type="monotone" dataKey="brix" stroke="#d97706" strokeWidth={3} dot={{ r: 4, fill: '#d97706', strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 6 }} />
+                                    <Legend iconType="plainline" wrapperStyle={{ fontSize: '10px', fontWeight: 'bold' }} />
+                                    <Line type="monotone" dataKey="brix" name="Brix Integral" stroke="#111827" strokeWidth={2.5} dot={{ r: 3, fill: '#111827', strokeWidth: 1, stroke: '#fff' }} activeDot={{ r: 6 }} />
+                                    <Line type="stepAfter" dataKey="minLimit" name="Mínimo" stroke="#2563eb" strokeWidth={2} dot={false} connectNulls />
+                                    <Line type="stepAfter" dataKey="maxLimit" name="Máximo" stroke="#ea580c" strokeWidth={2} dot={false} connectNulls />
+                                    <Line type="monotone" dataKey="graphAvg" name="Média Gráfica" stroke="#dc2626" strokeWidth={2} dot={false} connectNulls />
                                 </LineChart>
                             </ResponsiveContainer>
                         ) : (
@@ -590,16 +695,28 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack, current
                     <div className="h-[300px] w-full">
                         {brixConcentradoData.length > 0 ? (
                             <ResponsiveContainer width="100%" height="100%">
-                                <LineChart data={brixConcentradoData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+                                <LineChart data={brixConcentradoChartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
                                     <XAxis dataKey="time" tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={(val) => val.split(' ')[1] || val} />
-                                    <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} {...getYAxisConfig(brixConcentradoData, 'brix', 10)} />
+                                    <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} {...getYAxisConfig(brixConcentradoChartData, ['brix', 'minLimit', 'maxLimit', 'graphAvg'], 10)} />
                                     <Tooltip 
                                         contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
                                         labelStyle={{ fontSize: '10px', color: '#6b7280', fontWeight: 'bold' }}
-                                        formatter={(value: number) => [`${value.toFixed(2)} °Bx`, 'Brix Concentrado']}
+                                        formatter={(value: number, name: string) => {
+                                            const labels: Record<string, string> = {
+                                                brix: 'Brix Concentrado',
+                                                minLimit: 'Mínimo',
+                                                maxLimit: 'Máximo',
+                                                graphAvg: 'Média Gráfica'
+                                            };
+                                            return [`${Number(value).toFixed(2)} °Bx`, labels[name] || name];
+                                        }}
                                     />
-                                    <Line type="monotone" dataKey="brix" stroke="#0d9488" strokeWidth={3} dot={{ r: 4, fill: '#0d9488', strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 6 }} />
+                                    <Legend iconType="plainline" wrapperStyle={{ fontSize: '10px', fontWeight: 'bold' }} />
+                                    <Line type="monotone" dataKey="brix" name="Brix Concentrado" stroke="#111827" strokeWidth={2.5} dot={{ r: 3, fill: '#111827', strokeWidth: 1, stroke: '#fff' }} activeDot={{ r: 6 }} />
+                                    <Line type="stepAfter" dataKey="minLimit" name="Mínimo" stroke="#2563eb" strokeWidth={2} dot={false} connectNulls />
+                                    <Line type="stepAfter" dataKey="maxLimit" name="Máximo" stroke="#ea580c" strokeWidth={2} dot={false} connectNulls />
+                                    <Line type="monotone" dataKey="graphAvg" name="Média Gráfica" stroke="#dc2626" strokeWidth={2} dot={false} connectNulls />
                                 </LineChart>
                             </ResponsiveContainer>
                         ) : (
