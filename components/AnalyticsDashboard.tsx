@@ -578,7 +578,17 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack, current
                                         }}
                                     />
                                     <Legend iconType="plainline" wrapperStyle={{ fontSize: '10px', fontWeight: 'bold' }} />
-                                    <Line type="monotone" dataKey="brix" name="Brix Fruta Fresca" stroke="#111827" strokeWidth={2.5} dot={{ r: 3, fill: '#111827', strokeWidth: 1, stroke: '#fff' }} activeDot={{ r: 6 }} />
+                                    <Line
+                                        type="monotone"
+                                        dataKey="brix"
+                                        name="Brix Fruta Fresca"
+                                        stroke="#f97316"
+                                        strokeWidth={3}
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        dot={{ r: 4, fill: '#f97316', stroke: '#ffffff', strokeWidth: 2 }}
+                                        activeDot={{ r: 7, fill: '#f97316', stroke: '#ffffff', strokeWidth: 2 }}
+                                    />
                                     <Line type="stepAfter" dataKey="minLimit" name="Mínimo" stroke="#2563eb" strokeWidth={2} dot={false} connectNulls />
                                     <Line type="stepAfter" dataKey="maxLimit" name="Máximo" stroke="#ea580c" strokeWidth={2} dot={false} connectNulls />
                                     <Line type="monotone" dataKey="graphAvg" name="Média Gráfica" stroke="#dc2626" strokeWidth={2} dot={false} connectNulls />
@@ -587,33 +597,6 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack, current
                         ) : (
                             <div className="h-full flex items-center justify-center text-gray-400 text-xs uppercase font-bold tracking-widest border border-dashed border-gray-200 dark:border-gray-700 rounded-2xl text-center p-8">
                                 Sem dados de Entrada de Fruta no Período
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                {/* Resíduo Mineral Chart (Manga) */}
-                <div className="bg-white dark:bg-gray-800 p-6 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-700 xl:col-span-1">
-                    <h5 className="text-[10px] font-black uppercase tracking-widest text-purple-500 mb-6 flex items-center gap-2">
-                        <i className="fas fa-microscope text-purple-500"></i> Resíduo Mineral (Manga)
-                    </h5>
-                    <div className="h-[300px] w-full">
-                        {residuoMineralData.length > 0 ? (
-                            <ResponsiveContainer width="100%" height="100%">
-                                <LineChart data={residuoMineralData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
-                                    <XAxis dataKey="time" hide />
-                                    <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} {...getYAxisConfig(residuoMineralData, 'valor', 0.1)} />
-                                    <Tooltip 
-                                        contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontSize: '11px' }}
-                                        formatter={(value: number) => [`${value.toFixed(4)} g/kg`, 'Resíduo Mineral']}
-                                    />
-                                    <Line type="monotone" dataKey="valor" stroke="#8b5cf6" strokeWidth={3} dot={{ r: 4 }} />
-                                </LineChart>
-                            </ResponsiveContainer>
-                        ) : (
-                            <div className="h-full flex items-center justify-center text-gray-400 text-[10px] uppercase font-bold tracking-widest border border-dashed border-gray-200 dark:border-gray-700 rounded-2xl text-center p-8">
-                                Sem dados de Resíduo Mineral (Manga)
                             </div>
                         )}
                     </div>
@@ -779,32 +762,6 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ onBack, current
                         ) : (
                              <div className="h-full flex items-center justify-center text-gray-400 text-[10px] uppercase font-bold tracking-widest border border-dashed border-gray-200 dark:border-gray-700 rounded-2xl text-center p-4">
                                 Sem dados de pH
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                {/* Acidez Analysis Chart */}
-                <div className="bg-white dark:bg-gray-800 p-6 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-700">
-                    <h5 className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-6 flex items-center gap-2">
-                        <i className="fas fa-percentage text-blue-500"></i> Monitoramento de Acidez
-                    </h5>
-                    <div className="h-[250px] w-full">
-                        {analysisComparisonData.length > 0 ? (
-                             <ResponsiveContainer width="100%" height="100%">
-                                <LineChart data={analysisComparisonData} margin={{ top: 5, right: 10, bottom: 20, left: -20 }}>
-                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
-                                    <XAxis dataKey="time" hide />
-                                    <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} {...getYAxisConfig(analysisComparisonData, 'acidez', 1)} />
-                                    <Tooltip 
-                                        contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontSize: '11px' }}
-                                    />
-                                    <Line type="monotone" dataKey="acidez" name="Acidez (%)" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} />
-                                </LineChart>
-                             </ResponsiveContainer>
-                        ) : (
-                             <div className="h-full flex items-center justify-center text-gray-400 text-[10px] uppercase font-bold tracking-widest border border-dashed border-gray-200 dark:border-gray-700 rounded-2xl text-center p-4">
-                                Sem dados de Acidez
                             </div>
                         )}
                     </div>
